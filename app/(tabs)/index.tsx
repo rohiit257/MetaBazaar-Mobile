@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, ScrollView, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ethers } from 'ethers';
-import { ShoppingCart, Wallet, ExternalLink, Search, Sun, Moon } from 'lucide-react-native';
+import { ShoppingCart, Wallet, ExternalLink, Search, Sun, Moon, ChevronLeft, ChevronRight, ChevronDown, Star } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import GetIpfsUrlFromPinata from '../utils/ipfs';
 import contractInfo from '../marketplace.json';
@@ -35,6 +35,8 @@ export default function MarketplaceScreen() {
   const [loading, setLoading] = useState(true);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentCarouselIndex, setCurrentCarouselIndex] = useState(0);
+  const carouselRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadNFTs();
@@ -138,89 +140,30 @@ export default function MarketplaceScreen() {
     router.push(`/nft/${tokenId}`);
   };
 
-  const renderNFTCard = ({ item }: { item: NFT }) => {
-    const imageUrl = item.image ? GetIpfsUrlFromPinata(item.image) : 'https://via.placeholder.com/400';
-    console.log('Image URL for token', item.tokenId, ':', imageUrl);
-    
-    return (
-      <View style={[styles.card, { 
-        backgroundColor: theme.card,
-        borderColor: theme.border
-      }]}>
-        <TouchableOpacity onPress={() => handleViewNFT(item.tokenId)}>
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.nftImage}
-            onError={() => console.error('Image loading error for token', item.tokenId)}
-          />
-          <View style={styles.cardContent}>
-            <View style={styles.header}>
-              <Text style={[styles.tokenId, { color: theme.text }]}>{item.name}</Text>
-              <Text style={[styles.salesCount, { color: theme.subtext }]}>{item.salesCount} sales</Text>
-            </View>
-            {item.description && (
-              <Text style={[styles.description, { color: theme.subtext }]} numberOfLines={2}>
-                {item.description}
-              </Text>
-            )}
-            <View style={styles.priceContainer}>
-              <Text style={[styles.priceLabel, { color: theme.subtext }]}>Price</Text>
-              <Text style={[styles.price, { color: theme.accent }]}>{ethers.utils.formatEther(item.price)} ETH</Text>
-            </View>
-            <View style={styles.buttonContainer}>
-              <TouchableOpacity 
-                style={[styles.buyButton, { backgroundColor: theme.accent }]}
-                onPress={() => handleBuyNFT(item)}
-              >
-                <Text style={[styles.buyButtonText, { color: isDarkMode ? '#000000' : '#FFFFFF' }]}>
-                  {walletAddress ? 'Buy Now' : 'Connect Wallet to Buy'}
-                </Text>
-                {walletAddress ? (
-                  <ShoppingCart size={18} color={isDarkMode ? '#000000' : '#FFFFFF'} />
-                ) : (
-                  <Wallet size={18} color={isDarkMode ? '#000000' : '#FFFFFF'} />
-                )}
-              </TouchableOpacity>
-              {/* <TouchableOpacity 
-                style={styles.viewButton}
-                onPress={() => handleViewNFT(item.tokenId)}
-              >
-                <ExternalLink size={18} color="#4ADE80" />
-              </TouchableOpacity> */}
-            </View>
-          </View>
-        </TouchableOpacity>
-      </View>
-    );
+  const getNewDrops = () => {
+    // Get last 3 NFTs based on tokenId
+    return [...nfts].sort((a, b) => parseInt(b.tokenId) - parseInt(a.tokenId)).slice(0, 3);
   };
 
-  const renderHeader = () => (
-    <View style={[styles.headerContainer]}>
-      <View style={styles.headerTop}>
-        <Text style={[styles.title, { color: theme.text }]}>MetaBazaar</Text>
-        <TouchableOpacity 
-          style={[styles.themeButton, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(243, 244, 246, 0.5)' }]}
-          onPress={toggleTheme}
-        >
-          {isDarkMode ? (
-            <Sun size={20} color={theme.accent} />
-          ) : (
-            <Moon size={20} color={theme.accent} />
-          )}
-        </TouchableOpacity>
-      </View>
-      <BlurView intensity={30} tint={isDarkMode ? "dark" : "light"} style={[styles.searchContainer, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(243, 244, 246, 0.5)' }]}>
-        <Search size={20} color={theme.subtext} />
-        <TextInput
-          style={[styles.searchInput, { color: theme.text }]}
-          placeholder="Search NFTs..."
-          placeholderTextColor={theme.subtext}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
+  const renderCarouselItem = (item: NFT) => {
+    const imageUrl = item.image ? GetIpfsUrlFromPinata(item.image) : 'https://via.placeholder.com/400';
+    
+    return (
+      <TouchableOpacity 
+        style={styles.carouselItem}
+        onPress={() => handleViewNFT(item.tokenId)}
+      >
+        <Image
+          source={{ uri: imageUrl }}
+          style={styles.carouselImage}
         />
-      </BlurView>
-    </View>
-  );
+        <View style={styles.carouselInfo}>
+          <Text style={[styles.carouselTitle, { color: theme.text }]}>{item.name}</Text>
+          <Text style={[styles.carouselPrice, { color: theme.text }]}>Floor: {ethers.utils.formatEther(item.price)} ETH</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return <LoadingScreen message="Loading NFT Marketplace..." />;
@@ -228,17 +171,56 @@ export default function MarketplaceScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {renderHeader()}
-      {walletAddress && (
-        <Text style={[styles.walletAddress, { color: theme.accent }]}>
-          {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`}
-        </Text>
-      )}
       <FlatList
         data={filteredNfts}
-        renderItem={renderNFTCard}
+        ListHeaderComponent={() => (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>New Drops 🎒</Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={styles.carouselSection}
+              contentContainerStyle={styles.carouselContent}
+              decelerationRate="fast"
+              snapToInterval={256} // width + marginRight
+              snapToAlignment="start"
+            >
+              {getNewDrops().map((item) => renderCarouselItem(item))}
+            </ScrollView>
+
+            <View style={styles.tableHeader}>
+              <Text style={[styles.headerText, { color: theme.subtext, width: 30 }]}>#</Text>
+              <Text style={[styles.headerText, { color: theme.subtext, flex: 1 }]}>Collection</Text>
+              <Text style={[styles.headerText, { color: theme.subtext, width: 100, textAlign: 'right' }]}>Floor Price</Text>
+            </View>
+          </>
+        )}
+        renderItem={({ item }) => (
+          <TouchableOpacity 
+            style={styles.tableRow}
+            onPress={() => handleViewNFT(item.tokenId)}
+          >
+            <Text style={[styles.rankText, { color: theme.subtext }]}>
+              {parseInt(item.tokenId)}
+            </Text>
+            <View style={styles.nftColumn}>
+              <Image
+                source={{ uri: item.image ? GetIpfsUrlFromPinata(item.image) : 'https://via.placeholder.com/400' }}
+                style={styles.tableImage}
+              />
+              <View style={styles.nftInfo}>
+                <Text style={[styles.nftTitle, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+                <Text style={[styles.nftDescription, { color: theme.subtext }]} numberOfLines={2}>
+                  {item.description.slice(0, 8)}...
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.priceText, { color: theme.text }]}>
+              {ethers.utils.formatEther(item.price)} ETH
+            </Text>
+          </TouchableOpacity>
+        )}
         keyExtractor={(item) => `nft-${item.tokenId}`}
-        numColumns={2}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
       />
@@ -249,125 +231,99 @@ export default function MarketplaceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
   },
-  headerContainer: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 28,
+  sectionTitle: {
+    fontSize: 24,
     fontFamily: 'SpaceGrotesk_700Bold',
-    color: '#FFFFFF',
-  },
-  themeButton: {
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     marginBottom: 16,
   },
-  searchInput: {
-    flex: 1,
-    marginLeft: 12,
+  carouselSection: {
+    height: 300,
+    marginBottom: 24,
+  },
+  carouselContent: {
+    paddingHorizontal: 16,
+  },
+  carouselItem: {
+    width: 240,
+    height: 280,
+    marginRight: 16,
+  },
+  carouselImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: 12,
+  },
+  carouselInfo: {
+    marginTop: 12,
+  },
+  carouselTitle: {
     fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    marginBottom: 4,
+  },
+  carouselPrice: {
+    fontSize: 14,
     fontFamily: 'SpaceGrotesk_400Regular',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  headerText: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_400Regular',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  rankText: {
+    width: 30,
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_400Regular',
+  },
+  nftColumn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  tableImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  nftInfo: {
+    flex: 1,
+  },
+  nftTitle: {
+    fontSize: 16,
+    fontFamily: 'SpaceGrotesk_700Bold',
+    marginBottom: 4,
+  },
+  nftDescription: {
+    fontSize: 14,
+    fontFamily: 'SpaceGrotesk_400Regular',
+    opacity: 0.7,
+  },
+  priceText: {
+    width: 100,
+    fontSize: 16,
+    
+    fontFamily: 'SpaceGrotesk_700Bold',
+    textAlign: 'right',
   },
   listContainer: {
-    padding: 8,
-    paddingBottom: 100, // Add padding for tab bar
-  },
-  card: {
-    flex: 1,
-    margin: 8,
-    backgroundColor: '#1F2937',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#374151',
-  },
-  nftImage: {
-    width: '100%',
-    aspectRatio: 1,
-  },
-  cardContent: {
-    padding: 12,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 10,
-  },
-  tokenId: {
-    fontSize: 16,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    color: '#FFFFFF',
-  },
-  salesCount: {
-    fontSize: 14,
-    fontFamily: 'SpaceGrotesk_400Regular',
-    color: '#9CA3AF',
-  },
-  description: {
-    fontSize: 12,
-    fontFamily: 'SpaceGrotesk_400Regular',
-    color: '#9CA3AF',
-    marginBottom: 8,
-  },
-  priceContainer: {
-    marginBottom: 12,
-  },
-  priceLabel: {
-    fontSize: 12,
-    fontFamily: 'SpaceGrotesk_400Regular',
-    color: '#9CA3AF',
-  },
-  price: {
-    fontSize: 18,
-    fontFamily: 'SpaceGrotesk_700Bold',
-    color: '#4ADE80',
-    marginTop: 2,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  buyButton: {
-    flex: 1,
-    backgroundColor: '#4ADE80',
-    padding: 12,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buyButtonText: {
-    color: '#000000',
-    textAlign: 'center',
-    fontFamily: 'SpaceGrotesk_700Bold',
-    marginRight: 8,
-  },
-  walletAddress: {
-    fontSize: 14,
-    fontFamily: 'SpaceGrotesk_400Regular',
-    color: '#9CA3AF',
-    marginTop: 16,
-    marginLeft: 16,
+    paddingBottom: 100,
   },
 });
